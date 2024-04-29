@@ -1,25 +1,18 @@
-use sdl2::event::Event;
 use sdl2::image::{InitFlag, LoadTexture};
-use sdl2::keyboard::{Keycode, Scancode};
 use sdl2::pixels::Color;
 use sdl2::rect::{Point, Rect};
 use specs::prelude::World;
 use specs::{Builder, DispatcherBuilder, WorldExt};
-use std::time::Duration;
 
-use sm::{
-    Direction, Input, MovementStats, PhysicsData, Player1, PlayerState, PlayerStatus, Sprite,
-};
-
-mod animator;
-mod keyboard_input;
-mod physics;
-mod renderer;
+use sm::{Direction, MovementStats, PhysicsData, Player1, PlayerState, PlayerStatus, Sprite};
 
 fn main() -> Result<(), String> {
+    // Initialize SDL2
     let sdl_context = sdl2::init()?;
     let video_subsystem = sdl_context.video()?;
     let _image_context = sdl2::image::init(InitFlag::PNG | InitFlag::JPG);
+    let ttf_context = sdl2::ttf::init().map_err(|e| e.to_string())?;
+    let font = ttf_context.load_font(sm::FONT_PATH, 14)?;
     let window = video_subsystem
         .window("SM", 1000, 800)
         .position_centered()
@@ -27,34 +20,36 @@ fn main() -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     let mut canvas = window
         .into_canvas()
-        .software()
+        .accelerated()
         .build()
         .map_err(|e| e.to_string())?;
 
-    let idle_path = std::path::Path::new("/Users/benchen/workspace/sm/assets/Samurai/Idle.png");
-    let running_path = std::path::Path::new("/Users/benchen/workspace/sm/assets/Samurai/Run.png");
-    let blocking_path =
-        std::path::Path::new("/Users/benchen/workspace/sm/assets/Samurai/Block.png");
-    let jumping_path = std::path::Path::new("/Users/benchen/workspace/sm/assets/Samurai/Jump.png");
-    // let hitstun_path = std::path::Path::new("/Users/benchen/workspace/sm/assets/Samurai/Hurt.png");
-    // let blockstun_path = std::path::Path::new("/Users/benchen/workspace/sm/assets/Samurai/Block.png");
-
     let texture_creator = canvas.texture_creator();
-    let idle_texture = texture_creator.load_texture(idle_path)?;
-    let running_texture = texture_creator.load_texture(running_path)?;
-    let blocking_texture = texture_creator.load_texture(blocking_path)?;
-    let jumping_texture = texture_creator.load_texture(jumping_path)?;
-    let textures = [idle_texture, running_texture, blocking_texture, jumping_texture];
+
+    let texture_paths = [
+        sm::IDLE_PATH,
+        sm::RUNNING_PATH,
+        sm::BLOCKING_PATH,
+        sm::JUMPING_PATH,
+        sm::HITSTUN_PATH,
+        sm::BLOCKSTUN_PATH,
+        sm::ATTACKING_PATH,
+    ];
+    let textures = texture_paths.map(|path| {
+        texture_creator
+            .load_texture(path)
+            .unwrap_or_else(|_| panic!("Failed to load texture: {}", path))
+    });
 
     let mut dispatcher = DispatcherBuilder::new()
-        .with(keyboard_input::Keyboard, "Keyboard", &[])
-        .with(physics::Physics, "Physics", &["Keyboard"])
-        .with(animator::Animator, "Animator", &["Keyboard"])
+        .with(sm::keyboard_input::Keyboard, "Keyboard", &[])
+        .with(sm::physics::Physics, "Physics", &["Keyboard"])
+        .with(sm::animator::Animator, "Animator", &["Keyboard"])
         .build();
 
     let mut world = World::new();
-    world.insert(Player1);
-    world.insert(Input::Stop);
+    world.insert(sm::InputBuffer::new());
+    world.insert(sm::Framerate(1));
     dispatcher.setup(&mut world);
 
     world
@@ -80,64 +75,67 @@ fn main() -> Result<(), String> {
             acceleration: 3,
             friction: 1,
             gravity: 2,
-            jump_power: 20,
+            jump_power: 22,
+            superjump_power: 28,
             air_acceleration: 1,
             air_max_speed: 10,
         })
         .with(PlayerState {
             status: PlayerStatus::Idle,
             facing: Direction::Right,
+            animation_counter: 0,
         })
         .build();
 
     canvas.present();
 
     let mut event_pump = sdl_context.event_pump()?;
-    let mut i = 0;
+    let mut time_acculumator = std::time::Duration::new(0, 0);
+    let mut prev_time = std::time::Instant::now();
+
+    let mut frame_count = 0u32;
+    let mut fps_timer = std::time::Instant::now();
     'mainloop: loop {
-        // Handle events
-        for event in event_pump.poll_iter() {
-            match event {
-                Event::Quit { .. }
-                | Event::KeyDown {
-                    keycode: Some(Keycode::Escape),
-                    ..
-                } => break 'mainloop,
-                _ => (),
+        time_acculumator += prev_time.elapsed();
+        prev_time = std::time::Instant::now();
+        while time_acculumator >= sm::FRAME_TIME {
+            // Handle events
+            event_pump.pump_events();
+            let keyboard_state = event_pump.keyboard_state();
+            let input = sm::keyboard_input::get_input(&keyboard_state);
+            if input.contains(&sm::Input::Quit) {
+                break 'mainloop;
             }
-        }
 
-        let keyboard_state = event_pump.keyboard_state();
-        let mut input = Input::Stop;
+            let mut input_buffer = world.write_resource::<sm::InputBuffer>().clone();
+            dbg!(&input);
+            input_buffer.push(input);
 
-        // Left and right movement with SOCD = neutral
-        if keyboard_state.is_scancode_pressed(Scancode::Left) {
-            input = Input::Move(Direction::Left);
+            // Update state
+            dispatcher.dispatch(&world);
+            world.maintain();
+            time_acculumator -= sm::FRAME_TIME;
         }
-        if keyboard_state.is_scancode_pressed(Scancode::Right) {
-            input = if input == Input::Move(Direction::Left) {
-                Input::Stop
-            } else {
-                Input::Move(Direction::Right)
-            };
-        }
-
-        if keyboard_state.is_scancode_pressed(Scancode::Space) {
-            input = Input::Jump;
-        }
-        *world.write_resource() = input;
-
-        // Update state
-        i = (i + 1) % 255;
-        dispatcher.dispatch(&mut world);
-        world.maintain();
 
         // Render
-        let color = Color::RGB(i, 50, 255 - i);
-        renderer::render(&mut canvas, color, &textures, world.system_data())?;
+        let color = Color::RGB(50, 50, 50);
+        sm::renderer::render(
+            &mut canvas,
+            color,
+            &texture_creator,
+            &textures,
+            &font,
+            &world,
+        )?;
 
-        // Time
-        std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
+        // Count frames
+        frame_count += 1;
+        if fps_timer.elapsed().as_secs() >= 1 {
+            dbg!(frame_count);
+            world.write_resource::<sm::Framerate>().set(frame_count);
+            frame_count = 0;
+            fps_timer = std::time::Instant::now();
+        }
     }
 
     Ok(())

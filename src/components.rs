@@ -1,23 +1,27 @@
 use sdl2::rect::{Point, Rect};
 use specs::prelude::{Component, VecStorage};
 use specs_derive::Component;
+use std::{
+    collections::HashSet,
+    sync::{Arc, Mutex},
+};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Direction {
     Right,
     Left,
 }
 
 impl From<Direction> for bool {
-    fn from(f: Direction) -> bool {
-        match f {
+    fn from(direction: Direction) -> bool {
+        match direction {
             Direction::Left => true,
             Direction::Right => false,
         }
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum PlayerStatus {
     Idle,
     Running,
@@ -25,13 +29,34 @@ pub enum PlayerStatus {
     Jumping,
     Hitstun,
     Blockstun,
+    Attacking,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Input {
     Move(Direction),
-    Stop,
     Jump,
+    Crouch,
+    Attack,
+    Quit,
+}
+
+#[derive(Component, Debug, Clone, Copy, Default)]
+#[storage(VecStorage)]
+pub struct Framerate(pub u32);
+
+impl Framerate {
+    pub fn new(fps: u32) -> Self {
+        Framerate(fps)
+    }
+
+    pub fn get(&self) -> u32 {
+        self.0
+    }
+
+    pub fn set(&mut self, fps: u32) {
+        self.0 = fps;
+    }
 }
 
 #[derive(Component, Debug)]
@@ -52,6 +77,7 @@ pub struct MovementStats {
     pub friction: u32,
     pub gravity: u32,
     pub jump_power: u32,
+    pub superjump_power: u32,
     pub air_acceleration: u32,
     pub air_max_speed: u32,
 }
@@ -76,6 +102,7 @@ pub struct Player1;
 pub struct PlayerState {
     pub status: PlayerStatus,
     pub facing: Direction,
+    pub animation_counter: u32,
 }
 
 impl From<PlayerStatus> for usize {
@@ -88,6 +115,68 @@ impl From<PlayerStatus> for usize {
             PlayerStatus::Jumping => 3,
             PlayerStatus::Hitstun => 4,
             PlayerStatus::Blockstun => 5,
+            PlayerStatus::Attacking => 6,
         }
+    }
+}
+
+/// Fixed size ring buffer of length crate::COMMAND_BUFFER_SIZE
+#[derive(Clone)]
+pub struct InputBuffer {
+    inner: Arc<Mutex<InputBufferInner>>,
+}
+
+struct InputBufferInner {
+    buffer: [HashSet<Input>; crate::COMMAND_BUFFER_SIZE],
+    oldest_index: usize,
+}
+
+impl InputBuffer {
+    /// Create a new CommandBuffer with all inputs set to Input::Stop
+    pub fn new() -> Self {
+        InputBuffer {
+            inner: Arc::new(Mutex::new(InputBufferInner {
+                buffer: core::array::from_fn(|_| HashSet::new()),
+                oldest_index: 0,
+            })),
+        }
+    }
+
+    /// Push a new input into the buffer, overwriting the oldest input
+    pub fn push(&mut self, input: HashSet<Input>) {
+        let mut inner = self.inner.lock().unwrap();
+        let oldest_index = inner.oldest_index;
+        inner.buffer[oldest_index] = input;
+        inner.oldest_index = (inner.oldest_index + 1) % crate::COMMAND_BUFFER_SIZE;
+    }
+
+    /// Get the input at index i, where 0 is the most recent input and COMMAND_BUFFER_SIZE - 1 is the oldest input
+    pub fn get(&self, i: usize) -> HashSet<Input> {
+        let inner = self.inner.lock().unwrap();
+        inner.buffer
+            [(inner.oldest_index + crate::COMMAND_BUFFER_SIZE - i - 1) % crate::COMMAND_BUFFER_SIZE]
+            .clone()
+    }
+
+    pub fn get_all(&self) -> [HashSet<Input>; crate::COMMAND_BUFFER_SIZE] {
+        let inner = self.inner.lock().unwrap();
+        let mut buffer = core::array::from_fn(|_| HashSet::new());
+        for (i, item) in buffer.iter_mut().enumerate() {
+            item.clone_from(
+                &inner.buffer[(inner.oldest_index + crate::COMMAND_BUFFER_SIZE - i - 1)
+                    % crate::COMMAND_BUFFER_SIZE],
+            );
+        }
+        buffer
+    }
+
+    pub fn most_recent(&self) -> HashSet<Input> {
+        self.get(0)
+    }
+}
+
+impl Default for InputBuffer {
+    fn default() -> Self {
+        Self::new()
     }
 }

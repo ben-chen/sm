@@ -3,8 +3,9 @@ name = "sm"
 version = "0.1.0"
 authors = ["Ben Chen <chenbenjamin2@gmail.com>"]
 edition = "2021"
+license = "Apache-2.0"
 
 [dependencies]
-sdl2 = { version="0.36.0", features=["image"] }
+sdl2 = { version="0.36.0", features=["image", "ttf"] }
 specs = "0.20.0"
 specs-derive = "0.4.1"

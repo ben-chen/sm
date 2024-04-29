@@ -1,6 +1,6 @@
 use specs::{Join, ReadStorage, System, WriteStorage};
 
-use sm::{PhysicsData, Sprite, PlayerState, PlayerStatus, Direction};
+use crate::{PhysicsData, Sprite, PlayerState, PlayerStatus, Direction};
 
 pub struct Animator;
 
@@ -16,14 +16,16 @@ impl<'a> System<'a> for Animator {
                 PlayerStatus::Jumping => 1536,
                 PlayerStatus::Hitstun => 256,
                 PlayerStatus::Blockstun => 256,
+                PlayerStatus::Attacking => 768,
             };
             sprite.animation_rate = match player_state.status {
                 PlayerStatus::Idle => 5,
-                PlayerStatus::Running => 1,
+                PlayerStatus::Running => if physics_data.h_speed.abs() > 6 { 1 } else { 2 },
                 PlayerStatus::Blocking => 5,
                 PlayerStatus::Jumping => 1,
                 PlayerStatus::Hitstun => 3,
                 PlayerStatus::Blockstun => 2,
+                PlayerStatus::Attacking => 3,
             };
 
             sprite.flip = match player_state.facing {
@@ -31,7 +33,11 @@ impl<'a> System<'a> for Animator {
                 Direction::Right => false,
             };
 
+            let old_spritesheet = sprite.spritesheet;
             sprite.spritesheet = player_state.status.into();
+            if old_spritesheet != sprite.spritesheet {
+                sprite.current.set_x(0);
+            }
 
             sprite.counter += 1;
             if sprite.counter > sprite.animation_rate {
