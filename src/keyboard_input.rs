@@ -154,7 +154,7 @@ impl<'a> System<'a> for Keyboard {
                     }
                 }
             }
-            dbg!(player_state.status);
+            // dbg!(player_state.status);
         }
     }
 }

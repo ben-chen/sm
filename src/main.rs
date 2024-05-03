@@ -4,7 +4,9 @@ use sdl2::rect::{Point, Rect};
 use specs::prelude::World;
 use specs::{Builder, DispatcherBuilder, WorldExt};
 
-use sm::{Direction, MovementStats, PhysicsData, Player1, PlayerState, PlayerStatus, Sprite};
+use sm::{
+    CollisionMask, CollisionStatus, Direction, MovementStats, PhysicsData, Player1, PlayerState, PlayerStatus, Sprite
+};
 
 fn main() -> Result<(), String> {
     // Initialize SDL2
@@ -21,6 +23,7 @@ fn main() -> Result<(), String> {
     let mut canvas = window
         .into_canvas()
         .accelerated()
+        .present_vsync()
         .build()
         .map_err(|e| e.to_string())?;
 
@@ -34,6 +37,7 @@ fn main() -> Result<(), String> {
         sm::HITSTUN_PATH,
         sm::BLOCKSTUN_PATH,
         sm::ATTACKING_PATH,
+        sm::FIGHTER_DEAD_PATH,
     ];
     let textures = texture_paths.map(|path| {
         texture_creator
@@ -44,7 +48,13 @@ fn main() -> Result<(), String> {
     let mut dispatcher = DispatcherBuilder::new()
         .with(sm::keyboard_input::Keyboard, "Keyboard", &[])
         .with(sm::physics::Physics, "Physics", &["Keyboard"])
-        .with(sm::animator::Animator, "Animator", &["Keyboard"])
+        .with(sm::collider::Collider, "Collider", &["Physics"])
+        .with(
+            sm::player_animator::PlayerAnimator,
+            "PlayerAnimator",
+            &["Physics"],
+        )
+        .with(sm::animator::Animator, "Animator", &["PlayerAnimator"])
         .build();
 
     let mut world = World::new();
@@ -69,7 +79,10 @@ fn main() -> Result<(), String> {
             flip: false,
             counter: 0,
             animation_rate: 5,
+            glow: false
         })
+        .with(CollisionMask::Circle(Point::new(0, 0), 48.0))
+        .with(CollisionStatus(false))
         .with(MovementStats {
             max_speed: 20,
             acceleration: 3,
@@ -87,18 +100,41 @@ fn main() -> Result<(), String> {
         })
         .build();
 
+    world
+        .create_entity()
+        .with(PhysicsData {
+            position: Point::new(0, 0),
+            h_speed: 0,
+            v_speed: 0,
+            h_acceleration: 0,
+            v_acceleration: 0,
+        })
+        .with(Sprite {
+            spritesheet: 7,
+            current: Rect::new(0, 0, 128, 128),
+            wrap: 384,
+            flip: false,
+            counter: 0,
+            animation_rate: 60,
+            glow: false
+        })
+        .with(CollisionMask::Circle(Point::new(0, 0), 48.0))
+        .with(CollisionStatus(false))
+        .build();
+
     canvas.present();
 
     let mut event_pump = sdl_context.event_pump()?;
-    let mut time_acculumator = std::time::Duration::new(0, 0);
+    let mut frame_time_accumulator = std::time::Duration::new(0, 0);
     let mut prev_time = std::time::Instant::now();
 
     let mut frame_count = 0u32;
     let mut fps_timer = std::time::Instant::now();
     'mainloop: loop {
-        time_acculumator += prev_time.elapsed();
+        frame_time_accumulator += prev_time.elapsed();
+
         prev_time = std::time::Instant::now();
-        while time_acculumator >= sm::FRAME_TIME {
+        while frame_time_accumulator >= sm::FRAME_TIME {
             // Handle events
             event_pump.pump_events();
             let keyboard_state = event_pump.keyboard_state();
@@ -108,17 +144,18 @@ fn main() -> Result<(), String> {
             }
 
             let mut input_buffer = world.write_resource::<sm::InputBuffer>().clone();
-            dbg!(&input);
+            // dbg!(&input);
             input_buffer.push(input);
 
             // Update state
             dispatcher.dispatch(&world);
             world.maintain();
-            time_acculumator -= sm::FRAME_TIME;
+            frame_time_accumulator -= sm::FRAME_TIME;
         }
 
         // Render
         let color = Color::RGB(50, 50, 50);
+
         sm::renderer::render(
             &mut canvas,
             color,
@@ -131,7 +168,6 @@ fn main() -> Result<(), String> {
         // Count frames
         frame_count += 1;
         if fps_timer.elapsed().as_secs() >= 1 {
-            dbg!(frame_count);
             world.write_resource::<sm::Framerate>().set(frame_count);
             frame_count = 0;
             fps_timer = std::time::Instant::now();

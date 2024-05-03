@@ -91,6 +91,7 @@ pub struct Sprite {
     pub flip: bool,
     pub counter: u32,
     pub animation_rate: u32,
+    pub glow: bool
 }
 
 #[derive(Component)]
@@ -116,6 +117,39 @@ impl From<PlayerStatus> for usize {
             PlayerStatus::Hitstun => 4,
             PlayerStatus::Blockstun => 5,
             PlayerStatus::Attacking => 6,
+        }
+    }
+}
+
+#[derive(Component)]
+#[storage(VecStorage)]
+pub enum CollisionMask {
+    Circle(Point, f32),
+    Box,
+}
+
+#[derive(Component, Debug)]
+#[storage(VecStorage)]
+pub struct CollisionStatus(pub bool);
+
+impl CollisionMask {
+    pub fn check(&self, position: Point, other: &CollisionMask, other_position: Point) -> bool {
+        if let CollisionMask::Circle(center, radius) = self {
+            let adjusted_center = position + *center;
+            match other {
+                CollisionMask::Circle(other_center, other_radius) => {
+                    let adjusted_other_center = other_position + *other_center;
+                    ((adjusted_center.x() - adjusted_other_center.x())
+                        * (adjusted_center.x() - adjusted_other_center.x())
+                        + (adjusted_center.y() - adjusted_other_center.y())
+                            * (adjusted_center.y() - adjusted_other_center.y()))
+                        as f32
+                        <= (radius + other_radius) * (radius + other_radius)
+                }
+                CollisionMask::Box => false,
+            }
+        } else {
+            false
         }
     }
 }

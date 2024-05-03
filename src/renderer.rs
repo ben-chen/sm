@@ -9,10 +9,7 @@ use specs::{Join, ReadStorage, World, WorldExt};
 
 use crate::{Framerate, PhysicsData, Sprite};
 
-pub type SystemData<'a> = (
-    ReadStorage<'a, PhysicsData>,
-    ReadStorage<'a, Sprite>,
-);
+pub type SystemData<'a> = (ReadStorage<'a, PhysicsData>, ReadStorage<'a, Sprite>);
 
 pub fn render(
     canvas: &mut WindowCanvas,
@@ -36,6 +33,10 @@ pub fn render(
             sprite.current.width(),
             sprite.current.height(),
         );
+        if sprite.glow {
+            canvas.set_draw_color(Color::RED);
+            canvas.draw_rect(screen_rect)?;
+        }
         canvas.copy_ex(
             &textures[sprite.spritesheet],
             sprite.current,
@@ -57,7 +58,12 @@ pub fn render(
         .create_texture_from_surface(&surface)
         .map_err(|e| e.to_string())?;
     let (surface_width, surface_height) = surface.size();
-    let target = Rect::new((width - surface_width) as i32, 0, surface_width, surface_height);
+    let target = Rect::new(
+        (width - surface_width) as i32,
+        0,
+        surface_width,
+        surface_height,
+    );
     canvas.copy(&texture, None, target)?;
 
     canvas.present();
