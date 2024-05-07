@@ -1,6 +1,6 @@
 use specs::{Join, ReadStorage, System, WriteStorage};
 
-use crate::{PhysicsData, Sprite, PlayerState, PlayerStatus, Direction};
+use crate::{PhysicsData, Sprite, PlayerState, PlayerStatus, Direction, Fi32};
 
 pub struct PlayerAnimator;
 
@@ -20,7 +20,7 @@ impl<'a> System<'a> for PlayerAnimator {
             };
             sprite.animation_rate = match player_state.status {
                 PlayerStatus::Idle => 5,
-                PlayerStatus::Running => if physics_data.h_speed.abs() > 6 { 1 } else { 2 },
+                PlayerStatus::Running => if physics_data.speed.x.abs() > Fi32::from_num(6) { 3 } else { 5 },
                 PlayerStatus::Blocking => 5,
                 PlayerStatus::Jumping => 1,
                 PlayerStatus::Hitstun => 3,

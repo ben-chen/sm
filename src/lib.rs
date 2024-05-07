@@ -2,6 +2,8 @@ mod components;
 pub use components::*;
 mod constants;
 pub use constants::*;
+mod fi32;
+pub use fi32::*;
 
 pub mod player_animator;
 pub mod animator;

@@ -1,13 +1,14 @@
 use sdl2::{
+    gfx::primitives::DrawRenderer,
     pixels::Color,
-    rect::{Point, Rect},
+    rect::Rect,
     render::{Texture, TextureCreator, WindowCanvas},
     ttf::Font,
     video::WindowContext,
 };
 use specs::{Join, ReadStorage, World, WorldExt};
 
-use crate::{Framerate, PhysicsData, Sprite};
+use crate::{Framerate, PhysicsData, PointFi32, Sprite};
 
 pub type SystemData<'a> = (ReadStorage<'a, PhysicsData>, ReadStorage<'a, Sprite>);
 
@@ -26,16 +27,19 @@ pub fn render(
     let data = world.system_data::<SystemData>();
 
     for (physics_data, sprite) in (&data.0, &data.1).join() {
-        let screen_position =
-            physics_data.position + Point::new(width as i32 / 2, height as i32 / 2);
+        let screen_position = physics_data.position + PointFi32::new(width / 2, height / 2);
         let screen_rect = Rect::from_center(
             screen_position,
             sprite.current.width(),
             sprite.current.height(),
         );
         if sprite.glow {
-            canvas.set_draw_color(Color::RED);
-            canvas.draw_rect(screen_rect)?;
+            canvas.aa_circle(
+                screen_position.x.to_num(),
+                screen_position.y.to_num(),
+                36,
+                Color::RED,
+            )?;
         }
         canvas.copy_ex(
             &textures[sprite.spritesheet],

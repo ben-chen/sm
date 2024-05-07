@@ -4,7 +4,8 @@ use specs::{Join, ReadExpect, ReadStorage, System, WriteStorage};
 use std::collections::HashSet;
 
 use crate::{
-    Direction, Input, InputBuffer, MovementStats, PhysicsData, Player1, PlayerState, PlayerStatus,
+    Direction, Fi32, Input, InputBuffer, MovementStats, PhysicsData, Player1, PlayerState,
+    PlayerStatus,
 };
 
 pub struct Keyboard;
@@ -23,33 +24,34 @@ impl<'a> System<'a> for Keyboard {
             (&mut data.2, &data.3, &mut data.4).join()
         {
             let inputs = data.1.get_all();
-            physics_data.h_acceleration = 0;
+            physics_data.acceleration.x = Fi32::ZERO;
             player_state.animation_counter += 1;
             match &inputs[0] {
                 h if h.is_empty()
                     || player_state.status == PlayerStatus::Attacking
                     || h.contains(&Input::Attack) =>
                 {
-                    physics_data.h_acceleration = match player_state.status {
-                        PlayerStatus::Jumping => match physics_data.h_speed {
-                            h_speed if h_speed > movement_stats.air_max_speed as i32 => {
-                                -((movement_stats.air_acceleration as i32).min(h_speed))
+                    physics_data.acceleration.x = match player_state.status {
+                        PlayerStatus::Jumping => match physics_data.speed.x {
+                            x_speed if x_speed > movement_stats.air_max_speed => {
+                                -((movement_stats.air_acceleration).min(x_speed))
                             }
-                            h_speed if h_speed < -(movement_stats.air_max_speed as i32) => {
-                                (movement_stats.air_acceleration as i32).min(-h_speed)
+                            x_speed if x_speed < -(movement_stats.air_max_speed) => {
+                                (movement_stats.air_acceleration).min(-x_speed)
                             }
-                            _ => 0,
+                            _ => Fi32::ZERO,
                         },
-                        _ => match physics_data.h_speed {
-                            h_speed if h_speed > 0 => {
-                                -(movement_stats.friction.min(physics_data.h_speed as u32) as i32)
+                        _ => match physics_data.speed.x {
+                            x_speed if x_speed.is_positive() => {
+                                -(movement_stats.friction.min(physics_data.speed.x))
                             }
-                            h_speed if h_speed < 0 => {
-                                movement_stats.friction.min(-physics_data.h_speed as u32) as i32
+                            x_speed if x_speed.is_negative() => {
+                                movement_stats.friction.min(-physics_data.speed.x)
                             }
-                            _ => 0,
+                            _ => Fi32::ZERO,
                         },
                     };
+                    dbg!(physics_data.speed.x);
                     if h.contains(&Input::Attack) {
                         if player_state.status != PlayerStatus::Attacking {
                             player_state.animation_counter = 0;
@@ -60,50 +62,49 @@ impl<'a> System<'a> for Keyboard {
                 h if h.contains(&Input::Jump) => match player_state.status {
                     PlayerStatus::Idle | PlayerStatus::Running => {
                         player_state.status = PlayerStatus::Jumping;
-                        physics_data.v_speed = if inputs[1].contains(&Input::Crouch)
+                        physics_data.speed.y = if inputs[1].contains(&Input::Crouch)
                             || inputs[2].contains(&Input::Crouch)
                             || inputs[3].contains(&Input::Crouch)
                         {
-                            -(movement_stats.superjump_power as i32)
+                            -(movement_stats.superjump_power)
                         } else {
-                            -(movement_stats.jump_power as i32)
+                            -(movement_stats.jump_power)
                         };
-                        physics_data.v_acceleration = movement_stats.gravity as i32;
                     }
                     _ => (),
                 },
                 h if h.contains(&Input::Move(Direction::Left)) => {
-                    physics_data.h_acceleration = match player_state.status {
+                    physics_data.acceleration.x = match player_state.status {
                         PlayerStatus::Jumping => {
-                            if physics_data.h_speed > -(movement_stats.air_max_speed as i32) {
-                                -(movement_stats.air_acceleration as i32)
+                            if physics_data.speed.x > -(movement_stats.air_max_speed) {
+                                -(movement_stats.air_acceleration)
                             } else {
-                                0
+                                Fi32::ZERO
                             }
                         }
                         _ => {
-                            if physics_data.h_speed > -(movement_stats.max_speed as i32) {
-                                -(movement_stats.acceleration as i32)
+                            if physics_data.speed.x > -movement_stats.max_speed {
+                                -(movement_stats.acceleration)
                             } else {
-                                0
+                                Fi32::ZERO
                             }
                         }
                     };
                 }
                 h if h.contains(&Input::Move(Direction::Right)) => {
-                    physics_data.h_acceleration = match player_state.status {
+                    physics_data.acceleration.x = match player_state.status {
                         PlayerStatus::Jumping => {
-                            if physics_data.h_speed < movement_stats.air_max_speed as i32 {
-                                movement_stats.air_acceleration as i32
+                            if physics_data.speed.x < movement_stats.air_max_speed {
+                                movement_stats.air_acceleration
                             } else {
-                                0
+                                Fi32::ZERO
                             }
                         }
                         _ => {
-                            if physics_data.h_speed < movement_stats.max_speed as i32 {
-                                movement_stats.acceleration as i32
+                            if physics_data.speed.x < movement_stats.max_speed {
+                                movement_stats.acceleration
                             } else {
-                                0
+                                Fi32::ZERO
                             }
                         }
                     };
@@ -115,16 +116,24 @@ impl<'a> System<'a> for Keyboard {
             };
 
             // Clamp to max_speed
-            physics_data.h_speed = physics_data.h_speed.clamp(
-                -(movement_stats.max_speed as i32),
-                movement_stats.max_speed as i32,
-            );
+            physics_data.speed.x = physics_data
+                .speed
+                .x
+                .clamp(-movement_stats.max_speed, movement_stats.max_speed);
+
+            // Gravity
+            if player_state.status == PlayerStatus::Jumping || physics_data.position.y < Fi32::ZERO
+            {
+                physics_data.acceleration.y = movement_stats.gravity;
+            } else {
+                physics_data.acceleration.y = Fi32::ZERO;
+            }
 
             // Update player state if grounded
             if ![PlayerStatus::Jumping, PlayerStatus::Attacking].contains(&player_state.status) {
-                if physics_data.h_speed == 0 && physics_data.v_speed == 0 {
+                if physics_data.speed.x.is_zero() && physics_data.speed.y.is_zero() {
                     player_state.status = PlayerStatus::Idle;
-                } else if physics_data.h_speed != 0 {
+                } else if !physics_data.speed.x.is_zero() {
                     player_state.status = PlayerStatus::Running;
                 }
             }
@@ -136,24 +145,29 @@ impl<'a> System<'a> for Keyboard {
                 player_state.status = PlayerStatus::Idle;
             }
 
-            match physics_data.h_speed {
-                i32::MIN..=-1 => player_state.facing = Direction::Left,
-                1..=i32::MAX => player_state.facing = Direction::Right,
-                0 => (),
+            if inputs[0].contains(&Input::Move(Direction::Left))
+                && physics_data.speed.x.is_negative()
+            {
+                player_state.facing = Direction::Left;
+            } else if inputs[0].contains(&Input::Move(Direction::Right))
+                && physics_data.speed.x.is_positive()
+            {
+                player_state.facing = Direction::Right;
             }
 
-            if physics_data.position.y() > 0 {
-                physics_data.v_speed = 0;
-                physics_data.v_acceleration = 0;
-                physics_data.position.y = 0;
+            if (physics_data.position.y + physics_data.speed.y).is_positive() {
+                physics_data.speed.y = Fi32::ZERO;
+                physics_data.acceleration.y = Fi32::ZERO;
+                physics_data.position.y = Fi32::ZERO;
                 if player_state.status == PlayerStatus::Jumping {
-                    player_state.status = if physics_data.h_speed == 0 {
+                    player_state.status = if physics_data.speed.x == Fi32::ZERO {
                         PlayerStatus::Idle
                     } else {
                         PlayerStatus::Running
                     }
                 }
             }
+
             // dbg!(player_state.status);
         }
     }

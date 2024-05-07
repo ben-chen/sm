@@ -1,4 +1,5 @@
-use sdl2::rect::{Point, Rect};
+use crate::{Fi32, PointFi32};
+use sdl2::rect::Rect;
 use specs::prelude::{Component, VecStorage};
 use specs_derive::Component;
 use std::{
@@ -62,24 +63,22 @@ impl Framerate {
 #[derive(Component, Debug)]
 #[storage(VecStorage)]
 pub struct PhysicsData {
-    pub position: Point,
-    pub h_speed: i32,
-    pub v_speed: i32,
-    pub h_acceleration: i32,
-    pub v_acceleration: i32,
+    pub position: PointFi32,
+    pub speed: PointFi32,
+    pub acceleration: PointFi32,
 }
 
 #[derive(Component, Debug)]
 #[storage(VecStorage)]
 pub struct MovementStats {
-    pub max_speed: u32,
-    pub acceleration: u32,
-    pub friction: u32,
-    pub gravity: u32,
-    pub jump_power: u32,
-    pub superjump_power: u32,
-    pub air_acceleration: u32,
-    pub air_max_speed: u32,
+    pub max_speed: Fi32,
+    pub acceleration: Fi32,
+    pub friction: Fi32,
+    pub gravity: Fi32,
+    pub jump_power: Fi32,
+    pub superjump_power: Fi32,
+    pub air_acceleration: Fi32,
+    pub air_max_speed: Fi32,
 }
 
 #[derive(Component)]
@@ -91,7 +90,7 @@ pub struct Sprite {
     pub flip: bool,
     pub counter: u32,
     pub animation_rate: u32,
-    pub glow: bool
+    pub glow: bool,
 }
 
 #[derive(Component)]
@@ -123,27 +122,39 @@ impl From<PlayerStatus> for usize {
 
 #[derive(Component)]
 #[storage(VecStorage)]
+pub struct CollisionData {
+    pub mask: CollisionMask,
+    pub status: CollisionStatus,
+    pub repel_vector: PointFi32,
+    pub repel_speed: Fi32,
+}
+
+#[derive(Debug, Default)]
 pub enum CollisionMask {
-    Circle(Point, f32),
+    Circle(PointFi32, Fi32),
+    #[default]
     Box,
 }
 
-#[derive(Component, Debug)]
-#[storage(VecStorage)]
+#[derive(Debug, Default)]
 pub struct CollisionStatus(pub bool);
 
 impl CollisionMask {
-    pub fn check(&self, position: Point, other: &CollisionMask, other_position: Point) -> bool {
+    pub fn check(
+        &self,
+        position: PointFi32,
+        other: &CollisionMask,
+        other_position: PointFi32,
+    ) -> bool {
         if let CollisionMask::Circle(center, radius) = self {
             let adjusted_center = position + *center;
             match other {
                 CollisionMask::Circle(other_center, other_radius) => {
                     let adjusted_other_center = other_position + *other_center;
-                    ((adjusted_center.x() - adjusted_other_center.x())
-                        * (adjusted_center.x() - adjusted_other_center.x())
-                        + (adjusted_center.y() - adjusted_other_center.y())
-                            * (adjusted_center.y() - adjusted_other_center.y()))
-                        as f32
+                    ((adjusted_center.x - adjusted_other_center.x)
+                        * (adjusted_center.x - adjusted_other_center.x)
+                        + (adjusted_center.y - adjusted_other_center.y)
+                            * (adjusted_center.y - adjusted_other_center.y))
                         <= (radius + other_radius) * (radius + other_radius)
                 }
                 CollisionMask::Box => false,

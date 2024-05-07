@@ -9,9 +9,9 @@ impl<'a> System<'a> for Physics {
 
     fn run(&mut self, mut data: Self::SystemData) {
         for physics_data in (&mut data).join() {
-            physics_data.h_speed += physics_data.h_acceleration;
-            physics_data.v_speed += physics_data.v_acceleration;
-            physics_data.position = physics_data.position.offset(physics_data.h_speed, physics_data.v_speed);
+            physics_data.speed.x += physics_data.acceleration.x;
+            physics_data.speed.y += physics_data.acceleration.y;
+            physics_data.position = physics_data.position.offset(physics_data.speed.x, physics_data.speed.y);
         }
     }
 }

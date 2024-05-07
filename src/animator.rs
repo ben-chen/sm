@@ -12,7 +12,7 @@ impl<'a> System<'a> for Animator {
             sprite.counter += 1;
             if sprite.counter > sprite.animation_rate {
                 sprite.current.set_x(
-                    ((sprite.current.x() as u32 + sprite.current.width()) % sprite.wrap) as i32,
+                    ((sprite.current.x as u32 + sprite.current.width()) % sprite.wrap) as i32,
                 );
                 sprite.counter = 0;
             }

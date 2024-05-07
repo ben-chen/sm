@@ -1,11 +1,12 @@
 use sdl2::image::{InitFlag, LoadTexture};
 use sdl2::pixels::Color;
-use sdl2::rect::{Point, Rect};
+use sdl2::rect::Rect;
 use specs::prelude::World;
 use specs::{Builder, DispatcherBuilder, WorldExt};
 
 use sm::{
-    CollisionMask, CollisionStatus, Direction, MovementStats, PhysicsData, Player1, PlayerState, PlayerStatus, Sprite
+    CollisionData, CollisionMask, CollisionStatus, Direction, Fi32, MovementStats, PhysicsData,
+    Player1, PlayerState, PlayerStatus, PointFi32, Sprite,
 };
 
 fn main() -> Result<(), String> {
@@ -14,7 +15,6 @@ fn main() -> Result<(), String> {
     let video_subsystem = sdl_context.video()?;
     let _image_context = sdl2::image::init(InitFlag::PNG | InitFlag::JPG);
     let ttf_context = sdl2::ttf::init().map_err(|e| e.to_string())?;
-    let font = ttf_context.load_font(sm::FONT_PATH, 14)?;
     let window = video_subsystem
         .window("SM", 1000, 800)
         .position_centered()
@@ -27,6 +27,7 @@ fn main() -> Result<(), String> {
         .build()
         .map_err(|e| e.to_string())?;
 
+    let font = ttf_context.load_font(sm::FONT_PATH, 14)?;
     let texture_creator = canvas.texture_creator();
 
     let texture_paths = [
@@ -47,8 +48,8 @@ fn main() -> Result<(), String> {
 
     let mut dispatcher = DispatcherBuilder::new()
         .with(sm::keyboard_input::Keyboard, "Keyboard", &[])
-        .with(sm::physics::Physics, "Physics", &["Keyboard"])
-        .with(sm::collider::Collider, "Collider", &["Physics"])
+        .with(sm::collider::Collider, "Collider", &["Keyboard"])
+        .with(sm::physics::Physics, "Physics", &["Collider"])
         .with(
             sm::player_animator::PlayerAnimator,
             "PlayerAnimator",
@@ -66,11 +67,9 @@ fn main() -> Result<(), String> {
         .create_entity()
         .with(Player1)
         .with(PhysicsData {
-            position: Point::new(0, 0),
-            h_speed: 0,
-            v_speed: 0,
-            h_acceleration: 0,
-            v_acceleration: 0,
+            position: PointFi32::new(0, 0),
+            speed: PointFi32::new(0, 0),
+            acceleration: PointFi32::new(0, 0),
         })
         .with(Sprite {
             spritesheet: 0,
@@ -79,19 +78,23 @@ fn main() -> Result<(), String> {
             flip: false,
             counter: 0,
             animation_rate: 5,
-            glow: false
+            glow: false,
         })
-        .with(CollisionMask::Circle(Point::new(0, 0), 48.0))
-        .with(CollisionStatus(false))
+        .with(CollisionData {
+            mask: CollisionMask::Circle(PointFi32::new(0, 0), Fi32::from_num(36.0)),
+            status: CollisionStatus(false),
+            repel_vector: PointFi32::new(0, 0),
+            repel_speed: Fi32::from_num(3.0),
+        })
         .with(MovementStats {
-            max_speed: 20,
-            acceleration: 3,
-            friction: 1,
-            gravity: 2,
-            jump_power: 22,
-            superjump_power: 28,
-            air_acceleration: 1,
-            air_max_speed: 10,
+            max_speed: Fi32::from_num(17),
+            acceleration: Fi32::from_num(2.5),
+            friction: Fi32::from_num(1.2),
+            gravity: Fi32::from_num(1.8),
+            jump_power: Fi32::from_num(22),
+            superjump_power: Fi32::from_num(30),
+            air_acceleration: Fi32::from_num(1),
+            air_max_speed: Fi32::from_num(10),
         })
         .with(PlayerState {
             status: PlayerStatus::Idle,
@@ -103,11 +106,9 @@ fn main() -> Result<(), String> {
     world
         .create_entity()
         .with(PhysicsData {
-            position: Point::new(0, 0),
-            h_speed: 0,
-            v_speed: 0,
-            h_acceleration: 0,
-            v_acceleration: 0,
+            position: PointFi32::new(200, 0),
+            speed: PointFi32::new(0, 0),
+            acceleration: PointFi32::new(0, 0),
         })
         .with(Sprite {
             spritesheet: 7,
@@ -116,10 +117,38 @@ fn main() -> Result<(), String> {
             flip: false,
             counter: 0,
             animation_rate: 60,
-            glow: false
+            glow: false,
         })
-        .with(CollisionMask::Circle(Point::new(0, 0), 48.0))
-        .with(CollisionStatus(false))
+        .with(CollisionData {
+            mask: CollisionMask::Circle(PointFi32::new(0, 0), Fi32::from_num(36.0)),
+            status: CollisionStatus(false),
+            repel_vector: PointFi32::new(0, 0),
+            repel_speed: Fi32::ZERO,
+        })
+        .build();
+
+    world
+        .create_entity()
+        .with(PhysicsData {
+            position: PointFi32::new(360, 0),
+            speed: PointFi32::new(0, 0),
+            acceleration: PointFi32::new(0, 0),
+        })
+        .with(Sprite {
+            spritesheet: 7,
+            current: Rect::new(0, 0, 128, 128),
+            wrap: 384,
+            flip: true,
+            counter: 0,
+            animation_rate: 60,
+            glow: false,
+        })
+        .with(CollisionData {
+            mask: CollisionMask::Circle(PointFi32::new(0, 0), Fi32::from_num(36.0)),
+            status: CollisionStatus(false),
+            repel_vector: PointFi32::new(0, 0),
+            repel_speed: Fi32::ZERO,
+        })
         .build();
 
     canvas.present();
